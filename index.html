@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Who Has It</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #EEF2F5; --surface: #FFFFFF; --line: #D5DDE4; --ink: #16202A; --muted: #5B6B7A;
+    --free: #0E7C7B; --free-soft: #DDF1F0; --held: #B7791F; --held-soft: #FBEFD9;
+    --mine: #2F5FD0; --mine-soft: #E3EAFB; --focus: #2F5FD0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0F1418; --surface: #182028; --line: #2A3540; --ink: #E7ECF0; --muted: #93A2AF;
+      --free: #4FC1BE; --free-soft: #143634; --held: #E0A94A; --held-soft: #3B2E14;
+      --mine: #8FB0FF; --mine-soft: #1E2B4A; --focus: #8FB0FF;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { background: var(--bg); color: var(--ink); font-family: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+         font-size: 16px; line-height: 1.45; padding-block: 40px 56px; padding-inline: 16px; }
+  main { max-width: 560px; margin: 0 auto; display: grid; gap: 24px; }
+  h1 { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; font-size: 28px; margin: 0; }
+  .lede { margin: 6px 0 0; color: var(--muted); }
+  .me { display: grid; gap: 6px; }
+  .me label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+  .me input { font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
+              background: var(--surface); color: var(--ink); width: 100%; }
+  .me input:focus-visible, button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+  li { display: grid; grid-template-columns: 92px 1fr auto; align-items: center; gap: 14px;
+       background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .num { font-family: "IBM Plex Mono", ui-monospace, monospace; font-weight: 600; font-size: 34px;
+         font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .state { display: grid; gap: 4px; min-width: 0; }
+  .pill { display: inline-block; width: max-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
+          white-space: nowrap; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600;
+          background: var(--free-soft); color: var(--free); }
+  li[data-state="held"] .pill { background: var(--held-soft); color: var(--held); }
+  li[data-state="mine"] .pill { background: var(--mine-soft); color: var(--mine); }
+  .since { font-size: 13px; color: var(--muted); }
+  button { font: inherit; font-weight: 600; font-size: 14px; padding: 9px 14px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--line); background: var(--surface); color: var(--ink); white-space: nowrap; }
+  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  button:disabled { opacity: 0.45; cursor: default; }
+  .note { font-size: 13px; color: var(--muted); margin: 0; min-height: 1.2em; }
+  @media (max-width: 400px) { li { grid-template-columns: 1fr; } .num { font-size: 30px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Who Has It</h1>
+    <p class="lede">Take a number when you start using it. Release it when you are done.</p>
+  </header>
+  <div class="me">
+    <label for="name">Your name</label>
+    <input id="name" type="text" autocomplete="off" placeholder="Type your name once" maxlength="40">
+  </div>
+  <ul id="list" aria-live="polite"></ul>
+  <p class="note" id="note"></p>
+</main>
+<script>
+(() => {
+  const STORE = "https://jsonblob.com/api/jsonBlob/__BLOB_ID__";
+  const NUMBERS = ["17", "64", "190"];
+  const POLL_MS = 5000;
+  const list = document.getElementById("list"), note = document.getElementById("note"), nameInput = document.getElementById("name");
+  let slots = {}, myName = "", busy = false;
+  try { myName = localStorage.getItem("who-has-it.name") || ""; } catch (e) {}
+  nameInput.value = myName;
+  nameInput.addEventListener("input", () => { myName = nameInput.value.trim(); try { localStorage.setItem("who-has-it.name", myName); } catch (e) {} render(); });
+
+  const ago = (iso) => { const ms = Date.now() - new Date(iso).getTime(); if (!(ms >= 0)) return "";
+    const m = Math.round(ms / 60000); if (m < 1) return "just now"; if (m < 60) return m + " min ago";
+    const h = Math.round(m / 60); return h < 48 ? h + " h ago" : Math.round(h / 24) + " days ago"; };
+
+  function render() {
+    list.replaceChildren(...NUMBERS.map((n) => {
+      const r = slots[n] || {}; const holder = r.holder ? String(r.holder) : "";
+      const mine = holder && myName && holder.toLowerCase() === myName.toLowerCase();
+      const li = document.createElement("li"); li.dataset.state = !holder ? "free" : mine ? "mine" : "held";
+      const num = document.createElement("div"); num.className = "num"; num.textContent = n;
+      const state = document.createElement("div"); state.className = "state";
+      const pill = document.createElement("span"); pill.className = "pill";
+      pill.textContent = !holder ? "Free" : mine ? "You have it" : holder; state.appendChild(pill);
+      if (holder && r.since) { const s = document.createElement("span"); s.className = "since"; s.textContent = "since " + ago(r.since); state.appendChild(s); }
+      const btn = document.createElement("button");
+      if (!holder) { btn.textContent = "Take"; btn.className = "primary"; } else btn.textContent = mine ? "Release" : "Take over";
+      btn.disabled = busy || (!mine && !myName); btn.title = (!mine && !myName) ? "Type your name first" : "";
+      btn.addEventListener("click", () => act(n, mine ? "" : myName));
+      li.append(num, state, btn); return li;
+    }));
+  }
+  async function load() {
+    try { const r = await fetch(STORE, { cache: "no-store" }); if (!r.ok) throw new Error(r.status);
+      slots = (await r.json()).slots || {}; note.textContent = ""; }
+    catch (e) { note.textContent = "Cannot reach the list right now. Retrying."; }
+    render();
+  }
+  async function act(n, holder) {
+    busy = true; render();
+    try {
+      await load();
+      const next = { ...slots, [n]: { holder, since: new Date().toISOString() } };
+      const r = await fetch(STORE, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ slots: next }) });
+      if (!r.ok) throw new Error(r.status);
+      slots = next;
+    } catch (e) { note.textContent = "Could not save. Try again."; }
+    busy = false; render();
+  }
+  render(); load(); setInterval(load, POLL_MS);
+})();
+</script>
+</body>
+</html>
