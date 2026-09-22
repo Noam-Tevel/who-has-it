@@ -65,11 +65,33 @@
 </main>
 <script>
 (() => {
-  const STORE = "https://jsonblob.com/api/jsonBlob/__BLOB_ID__";
+  const API = "https://jsonblob.com/api/jsonBlob";
+  const DEFAULT_ID = "";                                   // set once the shared list exists
   const NUMBERS = ["17", "64", "190"];
   const POLL_MS = 5000;
   const list = document.getElementById("list"), note = document.getElementById("note"), nameInput = document.getElementById("name");
+  const storeId = new URLSearchParams(location.search).get("s") || DEFAULT_ID;
+  const STORE = API + "/" + storeId;
   let slots = {}, myName = "", busy = false;
+
+  if (!storeId) {
+    // First run ever: create the shared list from the browser, then reload with its id in the link.
+    const btn = document.createElement("button"); btn.className = "primary"; btn.textContent = "Create the shared list";
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      try {
+        const r = await fetch(API, { method: "POST", headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                                    body: JSON.stringify({ slots: {} }) });
+        const loc = r.headers.get("Location") || r.headers.get("X-jsonblob-id") || "";
+        const id = loc.split("/").pop();
+        if (!r.ok || !id) throw new Error(r.status);
+        location.search = "?s=" + id;
+      } catch (e) { note.textContent = "Could not create the list. Try again."; btn.disabled = false; }
+    });
+    list.replaceChildren(btn);
+    note.textContent = "Nobody created the shared list yet. One click, then share the new link.";
+    return;
+  }
   try { myName = localStorage.getItem("who-has-it.name") || ""; } catch (e) {}
   nameInput.value = myName;
   nameInput.addEventListener("input", () => { myName = nameInput.value.trim(); try { localStorage.setItem("who-has-it.name", myName); } catch (e) {} render(); });
